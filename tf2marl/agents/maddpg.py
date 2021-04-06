@@ -20,17 +20,20 @@ class MADDPGAgent(AbstractAgent):
         assert isinstance(obs_space_n[0], Space)
         obs_shape_n = space_n_to_shape_n(obs_space_n)
         act_shape_n = space_n_to_shape_n(act_space_n)
-        super().__init__(buff_size, obs_shape_n, act_shape_n, batch_size, prioritized_replay, alpha, max_step, initial_beta,
+        super().__init__(buff_size, obs_shape_n, act_shape_n, batch_size, prioritized_replay, alpha, max_step,
+                         initial_beta,
                          prioritized_replay_eps=prioritized_replay_eps)
 
         act_type = type(act_space_n[0])
         self.critic = MADDPGCriticNetwork(num_layer, num_units, lr, obs_shape_n, act_shape_n, act_type, agent_index)
-        self.critic_target = MADDPGCriticNetwork(num_layer, num_units, lr, obs_shape_n, act_shape_n, act_type, agent_index)
+        self.critic_target = MADDPGCriticNetwork(num_layer, num_units, lr, obs_shape_n, act_shape_n, act_type,
+                                                 agent_index)
         self.critic_target.model.set_weights(self.critic.model.get_weights())
 
         self.policy = MADDPGPolicyNetwork(num_layer, num_units, lr, obs_shape_n, act_shape_n[agent_index], act_type, 1,
                                           self.critic, agent_index)
-        self.policy_target = MADDPGPolicyNetwork(num_layer, num_units, lr, obs_shape_n, act_shape_n[agent_index], act_type, 1,
+        self.policy_target = MADDPGPolicyNetwork(num_layer, num_units, lr, obs_shape_n, act_shape_n[agent_index],
+                                                 act_type, 1,
                                                  self.critic, agent_index)
         self.policy_target.model.set_weights(self.policy.model.get_weights())
 
@@ -58,6 +61,7 @@ class MADDPGAgent(AbstractAgent):
         """
         Implements the updates of the target networks, which slowly follow the real network.
         """
+
         def update_target_network(net: tf.keras.Model, target_net: tf.keras.Model):
             net_weights = np.array(net.get_weights())
             target_net_weights = np.array(target_net.get_weights())
@@ -105,7 +109,7 @@ class MADDPGAgent(AbstractAgent):
         return [td_loss, policy_loss]
 
     def save(self, fp):
-        self.critic.model.save_weights(fp + 'critic.h5',)
+        self.critic.model.save_weights(fp + 'critic.h5', )
         self.critic_target.model.save_weights(fp + 'critic_target.h5')
         self.policy.model.save_weights(fp + 'policy.h5')
         self.policy_target.model.save_weights(fp + 'policy_target.h5')
@@ -121,7 +125,7 @@ class MADDPGPolicyNetwork(object):
     def __init__(self, num_layers, units_per_layer, lr, obs_n_shape, act_shape, act_type,
                  gumbel_temperature, q_network, agent_index):
         """
-        Implementation of the policy network, with optional gumbel softmax activation at the final layer.
+        Implementation of the policy network, with optional gumbel soft-max activation at the final layer.
         """
         self.num_layers = num_layers
         self.lr = lr
@@ -139,21 +143,21 @@ class MADDPGPolicyNetwork(object):
 
         self.optimizer = tf.keras.optimizers.Adam(lr=self.lr)
 
-        ### set up network structure
+        ## set up network structure
         self.obs_input = tf.keras.layers.Input(shape=self.obs_n_shape[agent_index])
 
         self.hidden_layers = []
         for idx in range(num_layers):
             layer = tf.keras.layers.Dense(units_per_layer, activation='relu',
-                                          name='ag{}pol_hid{}'.format(agent_index, idx))
+                                          name=f'ag{agent_index}pol_hid{idx}')
             self.hidden_layers.append(layer)
 
         if self.use_gumbel:
             self.output_layer = tf.keras.layers.Dense(self.act_shape, activation='linear',
-                                                      name='ag{}pol_out{}'.format(agent_index, idx))
+                                                      name=f'ag{agent_index}pol_out_1')
         else:
             self.output_layer = tf.keras.layers.Dense(self.act_shape, activation='tanh',
-                                                      name='ag{}pol_out{}'.format(agent_index, idx))
+                                                      name=f'ag{agent_index}pol_out_1')
 
         # connect layers
         x = self.obs_input
@@ -242,11 +246,11 @@ class MADDPGCriticNetwork(object):
         self.hidden_layers = []
         for idx in range(num_hidden_layers):
             layer = tf.keras.layers.Dense(units_per_layer, activation='relu',
-                                          name='ag{}crit_hid{}'.format(agent_index, idx))
+                                          name=f'ag{agent_index}crit_hid{idx}')
             self.hidden_layers.append(layer)
 
         self.output_layer = tf.keras.layers.Dense(1, activation='linear',
-                                                  name='ag{}crit_out{}'.format(agent_index, idx))
+                                                  name=f"ag{agent_index}crit_out_1")
 
         # connect layers
         x = self.input_concat_layer(self.obs_input_n + self.act_input_n)

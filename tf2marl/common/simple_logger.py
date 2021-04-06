@@ -6,14 +6,15 @@ import numpy as np
 import tensorflow as tf
 
 
-class RLLogger(object):
-    def __init__(self, exp_name, _run, n_agents, n_adversaries, save_rate):
-        '''
+class SimpleLogger(object):
+    def __init__(self, exp_name, experiment, n_agents, n_adversaries, save_rate):
+        """
         Initializes a logger.
         This logger will take care of results, and debug info, but never the replay buffer.
-        '''
-        self._run = _run
-        args = _run.config
+        """
+        self.exp_name = exp_name
+        self.save_rate = save_rate
+        self._exp = experiment
         self.n_agents = n_agents
         self.n_adversaries = n_adversaries
 
@@ -22,8 +23,9 @@ class RLLogger(object):
         # while os.path.exists(os.path.join(save_dir, exp_name)):
         #     print('WARNING: EXPERIMENT ALREADY EXISTS. APPENDING TO  TRIAL_NAME.')
         #     exp_name = exp_name + '_i'
-        print(_run._id)
-        self.ex_path = os.path.join('results', 'sacred', str(_run._id))
+
+        # create dirs for saving config and results
+        self.ex_path = os.path.join('results', 'simple', str(self.exp_name))
         os.makedirs(self.ex_path, exist_ok=True)
         self.model_path = os.path.join(self.ex_path, 'models')
         os.makedirs(self.model_path, exist_ok=True)
@@ -35,7 +37,7 @@ class RLLogger(object):
         # save arguments
         args_file_name = os.path.join(self.ex_path, 'args.pkl')
         with open(args_file_name, 'wb') as fp:
-            pickle.dump(args, fp)
+            pickle.dump(self._exp.config, fp)
 
         self.episode_rewards = [0.0]
         self.agent_rewards = [[0.0] for _ in range(n_agents)]
@@ -47,8 +49,6 @@ class RLLogger(object):
         self.episode_count = 0
         self.t_start = time.time()
         self.t_last_print = time.time()
-
-        self.save_rate = save_rate
 
     def record_episode_end(self, agents):
         """
@@ -63,10 +63,10 @@ class RLLogger(object):
 
         if self.episode_count % (self.save_rate / 10) == 0:
             mean_rew = np.mean(self.episode_rewards[-self.save_rate // 10: -1])
-            self._run.log_scalar('traning.episode_reward', mean_rew, self.train_step)
+            self._exp.log_scalar('traning.episode_reward', mean_rew, self.train_step)
             for ag_idx in range(self.n_agents):
                 mean_ag_rew = np.mean(self.agent_rewards[ag_idx][:-self.save_rate // 10:-1])
-                self._run.log_scalar('traning.ep_rew_ag{}'.format(ag_idx), mean_ag_rew, self.train_step)
+                self._exp.log_scalar('traning.ep_rew_ag{}'.format(ag_idx), mean_ag_rew, self.train_step)
 
         if self.episode_count % self.save_rate == 0:
             self.print_metrics()
@@ -74,21 +74,24 @@ class RLLogger(object):
             self.save_models(agents)
 
     def experiment_end(self):
+        """
+
+        """
         rew_file_name = os.path.join(self.ex_path, 'rewards.pkl')
         with open(rew_file_name, 'wb') as fp:
             pickle.dump(self.final_ep_rewards, fp)
+
         agrew_file_name = os.path.join(self.ex_path, 'agrewards.pkl')
         with open(agrew_file_name, 'wb') as fp:
             pickle.dump(self.final_ep_ag_rewards, fp)
-        print('...Finished total of {} episodes in {} minutes.'.format(self.episode_count,
-                                                                       (time.time() - self.t_start) / 60))
-        print(self._run._id)
+
+        print(f'...Finished total of {self.episode_count} episodes in {(time.time() - self.t_start) / 60} minutes.')
+        print(f"experiment name: {self.exp_name}")
 
     def print_metrics(self):
         if self.n_adversaries == 0:
-            print('steps: {}, episodes: {}, mean episode reward: {}, time: {}'.format(
-                self.train_step, self.episode_count, np.mean(self.episode_rewards[-self.save_rate:-1]),
-                round(time.time() - self.t_last_print, 3)))
+            print(
+                f'steps: {self.train_step}, episodes: {self.episode_count}, mean episode reward: {np.mean(self.episode_rewards[-self.save_rate:-1])}, time: {round(time.time() - self.t_last_print, 3)}')
         else:
             print('steps: {}, episodes: {}, mean episode reward: {}, agent episode reward: {}, time: {}'.format(
                 self.train_step, self.episode_count, np.mean(self.episode_rewards[-self.save_rate:-1]),

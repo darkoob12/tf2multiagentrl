@@ -31,57 +31,57 @@ train_ex = Experiment('train')
 @train_ex.config
 def train_config():
     # Logging
-    exp_name = 'default'            # name for logging
+    exp_name = 'default'  # name for logging
 
-    display = False                 # render environment
-    restore_fp = None               # path to restore models from, e.g.
-                                    # 'results/sacred/182/models', or None to train a new model
-    save_rate = 10                  # frequency to save policy as number of episodes
+    display = True  # render environment
+    restore_fp = None  # path to restore models from, e.g.
+    # 'results/sacred/182/models', or None to train a new model
+    save_rate = 10  # frequency to save policy as number of episodes
 
     # Environment
-    scenario_name = 'simple_spread' # environment name
-    num_episodes = 60000            # total episodes
-    max_episode_len = 25            # timesteps per episodes
+    scenario_name = 'simple_spread'  # environment name
+    num_episodes = 60000  # total episodes
+    max_episode_len = 25  # timesteps per episodes
 
     # Agent Parameters
-    good_policy = 'matd3'          # policy of "good" agents in env
-    adv_policy = 'matd3'           # policy of adversary agents in env
+    good_policy = 'matd3'  # policy of "good" agents in env
+    adv_policy = 'matd3'  # policy of adversary agents in env
     # available agent: maddpg, matd3, mad3pg, masac
 
     # General Training Hyperparameters
-    lr = 1e-2                       # learning rate for critics and policies
-    gamma = 0.95                    # decay used in environments
-    batch_size = 1024               # batch size for training
-    num_layers = 2                  # hidden layers per network
-    num_units = 64                  # units per hidden layer
+    lr = 1e-2  # learning rate for critics and policies
+    gamma = 0.95  # decay used in environments
+    batch_size = 1024  # batch size for training
+    num_layers = 2  # hidden layers per network
+    num_units = 64  # units per hidden layer
 
-    update_rate = 100               # update policy after each x steps
-    critic_zero_if_done = False     # set the value to zero in terminal steps
-    buff_size = 1e6                 # size of the replay buffer
-    tau = 0.01                      # Update for target networks
-    hard_max = False                # use Straight-Through (ST) Gumbel
+    update_rate = 100  # update policy after each x steps
+    critic_zero_if_done = False  # set the value to zero in terminal steps
+    buff_size = 1e6  # size of the replay buffer
+    tau = 0.01  # Update for target networks
+    hard_max = True  # use Straight-Through (ST) Gumbel
 
-    priori_replay = False           # enable prioritized replay
-    alpha = 0.6                     # alpha value (weights prioritization vs random)
-    beta = 0.5                      # beta value  (controls importance sampling)
+    priori_replay = False  # enable prioritized replay
+    alpha = 0.6  # alpha value (weights prioritization vs random)
+    beta = 0.5  # beta value  (controls importance sampling)
 
-    use_target_action = True        # use target action in environment, instead of normal action
+    use_target_action = True  # use target action in environment, instead of normal action
 
     # MATD3
     if good_policy == 'tf2marl':
-        policy_update_rate = 2      # Frequency of policy updates, compared to critic
+        policy_update_rate = 2  # Frequency of policy updates, compared to critic
     else:
         policy_update_rate = 1
     critic_action_noise_stddev = 0.0  # Added noise in critic updates
-    action_noise_clip = 0.5         # limit for this noise
+    action_noise_clip = 0.5  # limit for this noise
 
     # MASAC
-    entropy_coeff = 0.05            # weight for entropy in Soft-Actor-Critic
+    entropy_coeff = 0.05  # weight for entropy in Soft-Actor-Critic
 
     # MAD3PG
-    num_atoms = 51                  # number of atoms in support
-    min_val = -400                  # minimum atom value
-    max_val = 0                     # largest atom value
+    num_atoms = 51  # number of atoms in support
+    min_val = -400  # minimum atom value
+    max_val = 0  # largest atom value
 
 
 @train_ex.capture
@@ -91,10 +91,28 @@ def make_env(scenario_name) -> MultiAgentEnv:
     :param scenario_name:
     :return:
     """
-    import tf2marl.multiagent.scenarios as scenarios
+    if scenario_name == 'inversion':
+        from tf2marl.multiagent.scenarios.inversion import Scenario
+    elif scenario_name == 'maximizeA2':
+        from tf2marl.multiagent.scenarios.maximizeA2 import Scenario
+    elif scenario_name == 'simple_adversary':
+        from tf2marl.multiagent.scenarios.simple_adversary import Scenario
+    elif scenario_name == 'simple_crypto':
+        from tf2marl.multiagent.scenarios.simple_crypto import Scenario
+    elif scenario_name == 'simple_push':
+        from tf2marl.multiagent.scenarios.simple_push import Scenario
+    elif scenario_name == 'simple_reference':
+        from tf2marl.multiagent.scenarios.simple_reference import Scenario
+    elif scenario_name == 'simple_speaker_listener':
+        from tf2marl.multiagent.scenarios.simple_speaker_listener import Scenario
+    elif scenario_name == 'simple_tag':
+        from tf2marl.multiagent.scenarios.simple_tag import Scenario
+    elif scenario_name == 'simple_world_comm':
+        from tf2marl.multiagent.scenarios.simple_world_comm import Scenario
+    else:
+        from tf2marl.multiagent.scenarios.simple_spread import Scenario
 
-    # load scenario from script
-    scenario = scenarios.load(scenario_name + '.py').Scenario()
+    scenario = Scenario()
     # create world
     world = scenario.make_world()
     env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
@@ -144,17 +162,17 @@ def train(_run, exp_name, save_rate, display, restore_fp,
     while True:
         # get action
         if use_target_action:
-            action_n = [agent.target_action(obs.astype(np.float32)[None])[0] for agent, obs in
-                        zip(agents, obs_n)]
+            action_n = [agent.target_action(obs.astype(np.float32)[None])[0] for agent, obs in zip(agents, obs_n)]
         else:
             action_n = [agent.action(obs.astype(np.float32)) for agent, obs in zip(agents, obs_n)]
+
         # environment step
         if hard_max:
-            hard_action_n = softmax_to_argmax(action_n, agents)
-            new_obs_n, rew_n, done_n, info_n = env.step(hard_action_n)
+            action_n = softmax_to_argmax(action_n, agents)
         else:
             action_n = [action.numpy() for action in action_n]
-            new_obs_n, rew_n, done_n, info_n = env.step(action_n)
+
+        new_obs_n, rew_n, done_n, info_n = env.step(action_n)
 
         logger.episode_step += 1
 
@@ -207,86 +225,57 @@ def get_agents(_run, env, num_adversaries, good_policy, adv_policy, lr, batch_si
 
     :returns List[AbstractAgent] returns a list of instantiated agents
     """
+
+    def create_agent(alg_name):
+        if alg_name == 'maddpg':
+            ret_agent = MADDPGAgent(env.observation_space, env.action_space, agent_idx, batch_size,
+                                    buff_size,
+                                    lr, num_layers,
+                                    num_units, gamma, tau, priori_replay, alpha=alpha,
+                                    max_step=num_episodes * max_episode_len, initial_beta=beta,
+                                    _run=_run)
+        elif alg_name == 'matd3':
+            ret_agent = MATD3Agent(env.observation_space, env.action_space, agent_idx, batch_size,
+                                   buff_size,
+                                   lr, num_layers,
+                                   num_units, gamma, tau, priori_replay, alpha=alpha,
+                                   max_step=num_episodes * max_episode_len, initial_beta=beta,
+                                   policy_update_freq=policy_update_rate,
+                                   target_policy_smoothing_eps=critic_action_noise_stddev, _run=_run
+                                   )
+        elif alg_name == 'mad3pg':
+            ret_agent = MAD3PGAgent(env.observation_space, env.action_space, agent_idx, batch_size,
+                                    buff_size,
+                                    lr, num_layers,
+                                    num_units, gamma, tau, priori_replay, alpha=alpha,
+                                    max_step=num_episodes * max_episode_len, initial_beta=beta,
+                                    num_atoms=num_atoms, min_val=min_val, max_val=max_val,
+                                    _run=_run
+                                    )
+        elif alg_name == 'masac':
+            ret_agent = MASACAgent(env.observation_space, env.action_space, agent_idx, batch_size,
+                                   buff_size,
+                                   lr, num_layers, num_units, gamma, tau, priori_replay, alpha=alpha,
+                                   max_step=num_episodes * max_episode_len, initial_beta=beta,
+                                   entropy_coeff=entropy_coeff, policy_update_freq=policy_update_rate,
+                                   _run=_run
+                                   )
+        else:
+            raise RuntimeError('Invalid Class')
+
+        return ret_agent
+
     agents = []
     for agent_idx in range(num_adversaries):
-        if adv_policy == 'maddpg':
-            agent = MADDPGAgent(env.observation_space, env.action_space, agent_idx, batch_size,
-                                buff_size,
-                                lr, num_layers,
-                                num_units, gamma, tau, priori_replay, alpha=alpha,
-                                max_step=num_episodes * max_episode_len, initial_beta=beta,
-                                _run=_run)
-        elif adv_policy == 'matd3':
-            agent = MATD3Agent(env.observation_space, env.action_space, agent_idx, batch_size,
-                               buff_size,
-                               lr, num_layers,
-                               num_units, gamma, tau, priori_replay, alpha=alpha,
-                               max_step=num_episodes * max_episode_len, initial_beta=beta,
-                               policy_update_freq=policy_update_rate,
-                               target_policy_smoothing_eps=critic_action_noise_stddev, _run=_run
-                               )
-        elif adv_policy == 'mad3pg':
-            agent = MAD3PGAgent(env.observation_space, env.action_space, agent_idx, batch_size,
-                                buff_size,
-                                lr, num_layers,
-                                num_units, gamma, tau, priori_replay, alpha=alpha,
-                                max_step=num_episodes * max_episode_len, initial_beta=beta,
-                                num_atoms=num_atoms, min_val=min_val, max_val=max_val,
-                                _run=_run
-                                )
-        elif good_policy == 'masac':
-            agent = MASACAgent(env.observation_space, env.action_space, agent_idx, batch_size,
-                               buff_size,
-                               lr, num_layers, num_units, gamma, tau, priori_replay, alpha=alpha,
-                               max_step=num_episodes * max_episode_len, initial_beta=beta,
-                               entropy_coeff=entropy_coeff, policy_update_freq=policy_update_rate,
-                               _run=_run
-                               )
-        else:
-            raise RuntimeError('Invalid Class')
-        agents.append(agent)
+        agents.append(create_agent(adv_policy))
     for agent_idx in range(num_adversaries, env.n):
-        if good_policy == 'maddpg':
-            agent = MADDPGAgent(env.observation_space, env.action_space, agent_idx, batch_size,
-                                buff_size,
-                                lr, num_layers,
-                                num_units, gamma, tau, priori_replay, alpha=alpha,
-                                max_step=num_episodes * max_episode_len, initial_beta=beta,
-                                _run=_run)
-        elif good_policy == 'matd3':
-            agent = MATD3Agent(env.observation_space, env.action_space, agent_idx, batch_size,
-                               buff_size,
-                               lr, num_layers, num_units, gamma, tau, priori_replay, alpha=alpha,
-                               max_step=num_episodes * max_episode_len, initial_beta=beta,
-                               policy_update_freq=policy_update_rate,
-                               target_policy_smoothing_eps=critic_action_noise_stddev, _run=_run
-                               )
-        elif adv_policy == 'mad3pg':
-            agent = MAD3PGAgent(env.observation_space, env.action_space, agent_idx, batch_size,
-                                buff_size,
-                                lr, num_layers,
-                                num_units, gamma, tau, priori_replay, alpha=alpha,
-                                max_step=num_episodes * max_episode_len, initial_beta=beta,
-                                num_atoms=num_atoms, min_val=min_val, max_val=max_val,
-                                _run=_run
-                                )
-        elif good_policy == 'masac':
-            agent = MASACAgent(env.observation_space, env.action_space, agent_idx, batch_size,
-                               buff_size,
-                               lr, num_layers, num_units, gamma, tau, priori_replay, alpha=alpha,
-                               max_step=num_episodes * max_episode_len, initial_beta=beta,
-                               entropy_coeff=entropy_coeff, policy_update_freq=policy_update_rate,
-                               _run=_run
-                               )
-        else:
-            raise RuntimeError('Invalid Class')
-        agents.append(agent)
+        agents.append(create_agent(good_policy))
     print('Using good policy {} and adv policy {}'.format(good_policy, adv_policy))
     return agents
 
 
 def main():
-    file_observer = FileStorageObserver.create(os.path.join('results', 'sacred'))
+    file_observer = FileStorageObserver(os.path.join('results', 'sacred'))
     # use this code to attach a mongo database for logging
     # mongo_observer = MongoObserver(url='localhost:27017', db_name='sacred')
     # train_ex.observers.append(mongo_observer)
